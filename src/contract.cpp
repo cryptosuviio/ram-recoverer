@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Ville Sundell/CRYPTOSUVI OSK
+ * Copyright 2019-2020 Ville Sundell/CRYPTOSUVI OSK
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,17 +46,20 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
          });
       }
 
+      void add_internal(name account_name) {
+         accounts account_list(get_self(), get_self().value);
+
+         account_list.emplace(get_self(), [&](auto& a) {
+            a.account_name = account_name;
+         });
+      }
+
       [[eosio::action]]
       void add(std::vector<name> account_names) {
          require_auth(get_self());
 
          for(auto& account_name : account_names) {
-            accounts account_list(get_self(), get_self().value);
-
-            account_list.emplace(get_self(), [&](auto& a) {
-               a.account_name = account_name;
-            });
-
+            add_internal(account_name);
             DEBUG("Added account: ", account_name);
          }
       }
@@ -74,6 +77,13 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
                account_list.erase(account_iterator);
             }
 
+            skipped skipped_list(get_self(), get_self().value);
+
+            auto skipped_iterator = skipped_list.find(account_name.value);
+            if(skipped_iterator != skipped_list.end()) {
+               skipped_list.erase(skipped_iterator);
+            }
+
             DEBUG("Removed account: ", account_name);
          }
       }
@@ -85,7 +95,7 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
 
          auto account_iterator = account_list.begin();
 
-         for(i = 0;  i < n && account_iterator != account_list.end(); i++) {
+         for(i = 0; i < n && account_iterator != account_list.end(); i++) {
             DEBUG("Selling RAM from: ", account_iterator->account_name);
 
             eosiosystem::user_resources_table userres("eosio"_n, account_iterator->account_name.value);
@@ -126,5 +136,24 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
          }
 
          check(i > 0, "No accounts to sell RAM from");
+      }
+
+      [[eosio::action]]
+      void retry(uint8_t n) {
+         int i;
+         skipped skipped_list(get_self(), get_self().value);
+         accounts account_list(get_self(), get_self().value);
+
+         auto account_iterator = account_list.begin();
+         check(account_iterator == account_list.end(), "Accounts list must be empty first");
+
+         auto skipped_iterator = skipped_list.begin();
+
+         for(i = 0; i < n && skipped_iterator != skipped_list.end(); i++) {
+            add_internal(skipped_iterator->account_name);
+            skipped_iterator = skipped_list.erase(skipped_iterator);
+         }
+
+         check(i > 0, "No accounts copy from skipped accounts list");
       }
 };
