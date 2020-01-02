@@ -22,7 +22,7 @@
 
 /* We can leave debug messages on, since that could help solving problems on Mainnet */
 #define DEBUG(...) print(__FILE__, ":", __LINE__, " ", __VA_ARGS__, "\n");
-#define REMOVE_AND_CONTINUE(x) DEBUG(x, " Skipping ", account_iterator->account_name, "..."); account_iterator = account_list.erase(account_iterator); continue;
+#define SKIP_AND_CONTINUE(x) DEBUG(x, " Skipping ", account_iterator->account_name, "..."); add_skipped(account_iterator->account_name); account_iterator = account_list.erase(account_iterator); continue;
 
 using namespace eosio;
 
@@ -35,7 +35,16 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
          auto primary_key() const { return account_name.value; }
       };
 
-      typedef multi_index<"sellram"_n, account> accounts;
+      typedef multi_index<"accounts"_n, account> accounts;
+      typedef multi_index<"skipped"_n, account> skipped;
+
+      void add_skipped(name account_name) {
+         skipped skipped_list(get_self(), get_self().value);
+
+         skipped_list.emplace(get_self(), [&](auto& a) {
+            a.account_name = account_name;
+         });
+      }
 
       [[eosio::action]]
       void add(std::vector<name> account_names) {
@@ -86,7 +95,7 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
 
             int64_t ram_to_sell = res_itr->ram_bytes - 3010;
             if(ram_to_sell <= 0) {
-               REMOVE_AND_CONTINUE("Not enough RAM to sell");
+               SKIP_AND_CONTINUE("Not enough RAM to sell");
             }
 
             eosiosystem::rammarket rm ("eosio"_n, "eosio"_n.value);
@@ -97,7 +106,7 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
             //Calculating the RAM price using Bancor:
             auto sold_ram = int64_t( (ram_to_sell * ram_itr->quote.balance.amount) / (ram_itr->base.balance.amount + ram_to_sell) );
             if(sold_ram <= 0) {
-               REMOVE_AND_CONTINUE("RAM price too low");
+               SKIP_AND_CONTINUE("RAM price too low");
             }
 
             auto fee = ( sold_ram + 199 ) / 200;
@@ -108,7 +117,7 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
             token::transfer_action transfer("eosio.token"_n, {account_iterator->account_name, "active"_n});
             auto amount_to_recover = asset(sold_ram - fee, symbol(symbol_code("TLOS"),4));
             if(amount_to_recover.amount <= 0) {
-               REMOVE_AND_CONTINUE("Transfer amount too small");
+               SKIP_AND_CONTINUE("Transfer amount too small");
             }
 
             transfer.send(account_iterator->account_name, get_self(), amount_to_recover, "Recovering RAM per TBNOA: https://chainspector.io/dashboard/ratify-proposals/0");
