@@ -23,6 +23,7 @@
 /* We can leave debug messages on, since that could help solving problems on Mainnet */
 #define DEBUG(...) print(__FILE__, ":", __LINE__, " ", __VA_ARGS__, "\n");
 #define SKIP_AND_CONTINUE(x) DEBUG(x, " Skipping ", account_iterator->account_name, "..."); add_skipped(account_iterator->account_name); account_iterator = account_list.erase(account_iterator); continue;
+#define TRANSFER_TOKENS true /* Transfer the tokens received from sellram */
 
 using namespace eosio;
 
@@ -92,6 +93,10 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
       void sellram(uint8_t n) {
          int i;
          accounts account_list(get_self(), get_self().value);
+         eosiosystem::rammarket rm ("eosio"_n, "eosio"_n.value);
+
+         auto ram_itr = rm.find(symbol(symbol_code("RAMCORE"), 4).raw());
+         check(ram_itr != rm.end(), "No RAM Market?");
 
          auto account_iterator = account_list.begin();
 
@@ -108,29 +113,27 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
                SKIP_AND_CONTINUE("Not enough RAM to sell");
             }
 
-            eosiosystem::rammarket rm ("eosio"_n, "eosio"_n.value);
-            auto ram_itr = rm.find(symbol(symbol_code("RAMCORE"), 4).raw());
-            check(ram_itr != rm.end(), "No RAM Market?");
-
-            //auto sold_ram = eosiosystem::exchange_state::get_bancor_output(ram_itr->base.balance.amount, ram_itr->quote.balance.amount, ram_to_sell);
-            //Calculating the RAM price using Bancor:
-            auto sold_ram = int64_t( (ram_to_sell * ram_itr->quote.balance.amount) / (ram_itr->base.balance.amount + ram_to_sell) );
-            if(sold_ram <= 0) {
-               SKIP_AND_CONTINUE("RAM price too low");
-            }
-
-            auto fee = ( sold_ram + 199 ) / 200;
-
             eosiosystem::system_contract::sellram_action sellram("eosio"_n, {account_iterator->account_name, "active"_n});
             sellram.send(account_iterator->account_name, ram_to_sell);
 
-            token::transfer_action transfer("eosio.token"_n, {account_iterator->account_name, "active"_n});
-            auto amount_to_recover = asset(sold_ram - fee, symbol(symbol_code("TLOS"),4));
-            if(amount_to_recover.amount <= 0) {
-               SKIP_AND_CONTINUE("Transfer amount too small");
-            }
+            if(TRANSFER_TOKENS) {
+               //auto sold_ram = eosiosystem::exchange_state::get_bancor_output(ram_itr->base.balance.amount, ram_itr->quote.balance.amount, ram_to_sell);
+               //Calculating the RAM price using Bancor:
+               auto sold_ram = int64_t((ram_to_sell * ram_itr->quote.balance.amount) / (ram_itr->base.balance.amount + ram_to_sell));
+               if(sold_ram <= 0) {
+                  SKIP_AND_CONTINUE("RAM price too low for token transfer");
+               }
 
-            transfer.send(account_iterator->account_name, get_self(), amount_to_recover, "Recovering RAM per TBNOA: https://chainspector.io/dashboard/ratify-proposals/0");
+               auto fee = ( sold_ram + 199 ) / 200;
+
+               token::transfer_action transfer("eosio.token"_n, {account_iterator->account_name, "active"_n});
+               auto amount_to_recover = asset(sold_ram - fee, symbol(symbol_code("TLOS"),4));
+               if(amount_to_recover.amount <= 0) {
+                  SKIP_AND_CONTINUE("Transfer amount too small");
+               }
+
+               transfer.send(account_iterator->account_name, get_self(), amount_to_recover, "Recovering RAM per TBNOA: https://chainspector.io/dashboard/ratify-proposals/0");
+            }
 
             account_iterator = account_list.erase(account_iterator);
          }
