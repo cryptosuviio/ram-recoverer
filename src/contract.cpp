@@ -113,16 +113,17 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
                SKIP_AND_CONTINUE("Not enough RAM to sell");
             }
 
+            //Calculating the RAM price using Bancor:
+            auto sold_ram = int64_t((ram_to_sell * ram_itr->quote.balance.amount) / (ram_itr->base.balance.amount + ram_to_sell));
+            if(sold_ram <= 0) {
+               SKIP_AND_CONTINUE("RAM price too low for token transfer");
+            }
+
             eosiosystem::system_contract::sellram_action sellram("eosio"_n, {account_iterator->account_name, "active"_n});
             sellram.send(account_iterator->account_name, ram_to_sell);
 
             if(TRANSFER_TOKENS) {
                //auto sold_ram = eosiosystem::exchange_state::get_bancor_output(ram_itr->base.balance.amount, ram_itr->quote.balance.amount, ram_to_sell);
-               //Calculating the RAM price using Bancor:
-               auto sold_ram = int64_t((ram_to_sell * ram_itr->quote.balance.amount) / (ram_itr->base.balance.amount + ram_to_sell));
-               if(sold_ram <= 0) {
-                  SKIP_AND_CONTINUE("RAM price too low for token transfer");
-               }
 
                auto fee = ( sold_ram + 199 ) / 200;
 
