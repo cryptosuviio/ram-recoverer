@@ -17,13 +17,15 @@
 #include <eosio/eosio.hpp>
 #include <eosio/asset.hpp>
 #include <eosio/name.hpp>
+#include <eosio/singleton.hpp>
 #include <eosio.system/eosio.system.hpp>
 #include <eosio.token/eosio.token.hpp>
 
 /* We can leave debug messages on, since that could help solving problems on Mainnet */
 #define DEBUG(...) print(__FILE__, ":", __LINE__, " ", __VA_ARGS__, "\n");
 #define SKIP_AND_CONTINUE(x) DEBUG(x, " Skipping ", account_iterator->account_name, "..."); add_skipped(account_iterator->account_name); account_iterator = account_list.erase(account_iterator); continue;
-#define TRANSFER_TOKENS true /* Transfer the tokens received from sellram */
+#define DEFAULT_TRANSFER_TOKENS true /* Transfer the tokens received from sellram, increases NET */
+#define DEFAULT_RAM_USED 2182 /* This applies to unused genesis accounts, can be increased for contract accounts */
 
 using namespace eosio;
 
@@ -36,8 +38,34 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
          auto primary_key() const { return account_name.value; }
       };
 
+      struct [[eosio::table]] config {
+         uint64_t used_ram;
+         bool transfer;
+      };
+
       typedef multi_index<"accounts"_n, account> accounts;
       typedef multi_index<"skipped"_n, account> skipped;
+      typedef singleton<"config"_n, config> global_configuration;
+      global_configuration configuration;
+
+      _contract(name self, name code, datastream<const char*> ds): eosio::contract(self, code, ds), configuration(get_self(), get_self().value) {
+      }
+
+      config getconfig() {
+         /* We could make this one too long oneliner */
+         if(configuration.exists()) {
+            return configuration.get();
+         } else {
+            return {DEFAULT_RAM_USED, DEFAULT_TRANSFER_TOKENS};
+         }
+      }
+
+      [[eosio::action]]
+      void setconfig(uint64_t used_ram, bool transfer) {
+         require_auth(get_self());
+
+         configuration.set(config{used_ram, transfer}, get_self());
+      }
 
       void add_skipped(name account_name) {
          skipped skipped_list(get_self(), get_self().value);
@@ -92,6 +120,7 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
       [[eosio::action]]
       void sellram(uint8_t n) {
          int i;
+         config current_conf = getconfig();
          accounts account_list(get_self(), get_self().value);
          eosiosystem::rammarket rm ("eosio"_n, "eosio"_n.value);
 
@@ -108,7 +137,7 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
             auto res_itr = userres.find(account_iterator->account_name.value);
             check(res_itr != userres.end(), "User has no resource entry");
 
-            int64_t ram_to_sell = res_itr->ram_bytes - 3010;
+            int64_t ram_to_sell = res_itr->ram_bytes - current_conf.used_ram;
             if(ram_to_sell <= 0) {
                SKIP_AND_CONTINUE("Not enough RAM to sell");
             }
@@ -122,7 +151,7 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
             eosiosystem::system_contract::sellram_action sellram("eosio"_n, {account_iterator->account_name, "active"_n});
             sellram.send(account_iterator->account_name, ram_to_sell);
 
-            if(TRANSFER_TOKENS) {
+            if(current_conf.transfer) {
                //auto sold_ram = eosiosystem::exchange_state::get_bancor_output(ram_itr->base.balance.amount, ram_itr->quote.balance.amount, ram_to_sell);
 
                auto fee = ( sold_ram + 199 ) / 200;
@@ -133,7 +162,7 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
                   SKIP_AND_CONTINUE("Transfer amount too small");
                }
 
-               transfer.send(account_iterator->account_name, get_self(), amount_to_recover, "Recovering RAM per TBNOA: https://chainspector.io/dashboard/ratify-proposals/0");
+               transfer.send(account_iterator->account_name, get_self(), amount_to_recover, "Recovering RAM per TBNOA: https://chainspector.io/governance/ratify-proposals/0");
             }
 
             account_iterator = account_list.erase(account_iterator);
@@ -158,6 +187,6 @@ class [[eosio::contract("contract")]] _contract : public eosio::contract {
             skipped_iterator = skipped_list.erase(skipped_iterator);
          }
 
-         check(i > 0, "No accounts copy from skipped accounts list");
+         check(i > 0, "No accounts to copy from skipped accounts list");
       }
 };
