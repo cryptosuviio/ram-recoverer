@@ -1,6 +1,6 @@
 <h1 class="contract">add</h1>
 
-Adding a list of accounts to be either unstaked (if anything to unstake), or recovered.
+Adding a list of accounts for RAM recovery.
 
 ### Intent
 INTENT. This is the only way to add accounts to this contract. This is done by contract operator(s).
@@ -11,7 +11,7 @@ TERM. This Contract expires at the conclusion of code execution.
 
 <h1 class="contract">remove</h1>
 
-Removes a list of accounts, either from to be unstaked, or recovered.
+Removes a list of accounts, either from the main account list, or from the skipped account list.
 
 ### Intent
 INTENT. This is one way to remove accounts from this contract. This is done by contract operator(s).
@@ -20,35 +20,37 @@ INTENT. This is one way to remove accounts from this contract. This is done by c
 TERM. This Contract expires at the conclusion of code execution.
 
 
-<h1 class="contract">removeme</h1>
+<h1 class="contract">sellram</h1>
 
-Gives a regular user a way to remove themselves from being unstaked or recovered.
-The rationale is, that by issuing removeme, user becomes a party to the TBNOA, hence immune to recovery.
-
-### Intent
-INTENT. This is the only way for a user to remove themselves from this contract.
-
-### Term
-TERM. This Contract expires at the conclusion of code execution.
-
-
-<h1 class="contract">unstake</h1>
-
-Unstakes n accounts.
-
-### Intent
-INTENT. Anyone who can issue transactions, can participate to unstaking.
-
-### Term
-TERM. This Contract expires at the conclusion of code execution.
-
-
-<h1 class="contract">recover</h1>
-
-Recover n accounts.
+Selling RAM from n accounts.
 
 ### Intent
 INTENT. Anyone who can issue transactions, can participate to the recovery process.
+
+### Term
+TERM. This Contract expires at the conclusion of code execution.
+
+
+<h1 class="contract">retry</h1>
+
+Places n accounts from the skipped list to the main account list for retrying.
+The main account list must be empty.
+
+### Intent
+INTENT. Anyone who can issue transactions, can participate to the recovery process.
+
+### Term
+TERM. This Contract expires at the conclusion of code execution.
+
+
+<h1 class="contract">setconfig</h1>
+
+Sets the following contract configuration parameters:
+    - What is the amount of RAM to leave to each account (bytes)
+    - Should tokens be transferred to the recovery contract
+
+### Intent
+INTENT. This is the only way to change the contract configuration. This is done by contract operator(s).
 
 ### Term
 TERM. This Contract expires at the conclusion of code execution.
